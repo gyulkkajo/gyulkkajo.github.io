@@ -1,43 +1,44 @@
-title: In the corner of a darkroom
-email: gyulkkajo@gmail.com
-description: >
-  Development story. Discuss mainly about linux kernel, system optimazation and tools. Not only share knowledge of development and system analyzation know-how and also introduce new technology. Awesome!
-permalink: ':title/'
-baseurl: "" # the subpath of your site, e.g. /blog
-url: "https://gyulkkajo.github.io" # the base hostname & protocol for your site, e.g. http://example.com
+remote_theme: wowthemesnet/mediumish-theme-jekyll
 
-# Author settings
-author: Changhee Han
-author-pic: chhan_profile.jpg
-about-author: Changhee Han who is known as gyulkkajo which is a favorite nickname of him. Software developer in Korea. Amateur photographer. Burger lover.
+# Site
+name: "Gyulish"
+description: "Development story. Discuss mainly about linux kernel, system optimazation and tools. Not only share knowledge of development and system analyzation know-how and also introduce new technology. Awesome!"
+meta_description: "Development, Photograph, Dailly life."
+logo: 'assets/images/logo.png'
+favicon: 'assets/images/logo.png'
+baseurl: /
+google_analytics: 'UA-115098754-1'
+disqus: ''
+mailchimp-list: ''
 
-# Contact links
-email: gyulkkajo@gmail.com
-website: nophotoplease.tistory.com
-linkedin: gyulkkajo
-github: gyulkkajo
-instagram: nehloi0zb
-pinterest: # Add your Pinterest handle
+# Authors
+authors:
+  gyul:
+    name: Changhee Han
+    display_name: Changhee Han
+    gravatar: 
+    email: gyulkkajo@gmail.com
+    web: http://nophotoplease.tistory.com
+    twitter: 
+    description: "Changhee Han who is known as gyulkkajo which is a favorite nickname of him. Software developer in Korea. Amateur photographer. Burger lover."
 
-# Newsletter
-mailchimp: # Add your MailChimp form identifier.
-
-# Disqus
-discus_identifier: # Add your discus identifier
-
-# Tracker
-analytics: UA-115098754-1
-
-# Paginate
-paginate: 8
-paginate_path: /page:num/
-
-# Build settings
-markdown: kramdown
-gems:
+# Plugins
+plugins: 
   - jekyll-paginate
-  - jekyll-feed
-  - jekyll-sitemap
-
-include: [_pages]
-exclude: ["node_modules", "gulpfile.js", "package.json", "yarn.lock"]
+  - jekyll-archives
+    
+# Archives
+jekyll-archives:
+  enabled:
+    - categories
+  layout: archive
+  permalinks:
+    category: '/category/:name/'
+    
+# Pagination 
+paginate: 6
+paginate_path: /page:num/
+    
+# Other
+markdown: kramdown
+highlighter: rouge
