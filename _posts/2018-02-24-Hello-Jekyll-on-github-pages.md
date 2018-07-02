@@ -1,14 +1,10 @@
 ---
-layout: post
 title:  Hello Jekyll on github pages
-date:   2018-02-24 00:00:00 +0900
-description: 
-img: img-typewriter.jpg # code, do, domore, hello, keys, travel note, typewriter...
+categories: [blog]
 tags: [development, code, snippet, linux]
-author: Changhee Han
-typora-root-url: ../
-typora-copy-images-to: ../assets/img
-
+header:
+  image: /assets/images/img-do.jpg
+  teaser: /assets/images/img-typewriter.jpg
 ---
 
 This is very first page on github pages. I'm going to keep trying to write down a story here even though it would be hard.
@@ -35,7 +31,7 @@ It's been a day and I haven't experienced much, so it maybe too early to judge i
 
 
 
-![nophotoplz-03161](/assets/img/nophotoplz-03161.jpg)
+![nophotoplz-03161](/assets/images/nophotoplz-03161.jpg)
 
 
 
