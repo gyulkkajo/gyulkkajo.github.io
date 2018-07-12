@@ -7,6 +7,10 @@ tags:
   - linux
   - memory
   - tool
+toc: true
+toc_label: How to
+toc_icon: chalkboard-teacher
+classes: wide
 ---
 
 This docuemnt explains kmemleak, which is memory leak detection tool for linux.
