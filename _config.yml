@@ -4,7 +4,7 @@ minimal_mistakes_skin    : "default" # "air", "aqua", "contrast", "dark", "dirt"
 
 # Site Settings
 locale                   : "en-US"
-title                    : "Somewhere"
+title                    : "Project i.M"
 title_separator          : "-"
 name                     : "Changhee Han"
 description              : "Development story. Discuss mainly about linux kernel, system optimazation and tools. Not only share knowledge of development and system analyzation know-how and also introduce new technology. Awesome!"
