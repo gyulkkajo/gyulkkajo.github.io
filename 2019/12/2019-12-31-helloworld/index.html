@@ -1,0 +1,513 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta http-equiv=x-ua-compatible content="IE=edge,chrome=1"><title>Helloworld | Encode Everything</title><meta name=viewport content="width=device-width,initial-scale=1"><meta name=robots content="noodp"><meta name=Description content="Development story. Discuss mainly about linux kernel, system optimazation and tools. Not only share knowledge of development and system analyzation know-how and also introduce new technology. Awesome!"><link rel=canonical href=https://gyulkkajo.github.io/2019/12/2019-12-31-helloworld/><link rel="shortcut icon" type=image/x-icon href=/favicon.ico><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=icon type=image/png sizes=32x32 href=/favicon-32x32.png><link rel=icon type=image/png sizes=16x16 href=/favicon-16x16.png><link rel=manifest href=/site.webmanifest><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><meta name=msapplication-TileColor content="#da532c"><meta name=theme-color content="#ffffff"><meta name=twitter:card content="summary"><meta name=twitter:title content="Helloworld"><meta name=twitter:description content="Memory Reclaim 101 This is a short note explaining memory reclaim flow in linux kernel. Reverse map Page doesn't know which processes share itself because it doesn't have shared mapping info. 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 graph LR; subgraph MM task_struct -- mm --> mm_struct task_struct --> pgd pgd -- ... --> page mm_struct --> vm_area_struct end vm_area_struct --> page"><script type=application/ld+json>{"@context":"http://schema.org","@type":"BlogPosting","headline":"Helloworld","mainEntityOfPage":{"@type":"WebPage","@id":"https:\/\/gyulkkajo.github.io\/2019\/12\/2019-12-31-helloworld\/"},"image":{"@type":"ImageObject","url":"https:\/\/gyulkkajo.github.io\/cover.png","width":800,"height":600},"genre":"posts","keywords":"Hugo, Theme","wordcount":1113,"url":"https:\/\/gyulkkajo.github.io\/2019\/12\/2019-12-31-helloworld\/","datePublished":"2019-12-31T15:26:46\x2b09:00","dateModified":"2019-12-31T15:26:46\x2b09:00","license":"This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.","publisher":{"@type":"Organization","name":"Changhee Han","logo":{"@type":"ImageObject","url":"https:\/\/gyulkkajo.github.io\/logo.png","width":200,"height":200}},"description":""}</script><link rel=stylesheet href=/css/style.min.css><link rel=stylesheet href=/css/lib/fontawesome-free/all.min.min.css><link rel=stylesheet href=/css/lib/animate/animate.min.min.css></head><body><script>window.isDark=(window.localStorage&&window.localStorage.getItem('theme'))==='dark';window.isDark&&document.body.classList.add('dark-theme');</script><div class=wrapper><nav class=navbar><div class=navbar-container><div class="navbar-header animated bounceIn"><a href=https://gyulkkajo.github.io/>Encode Everything</a></div><div class=navbar-menu><a class=menu-item href=https://gyulkkajo.github.io/posts>Posts</a>
+<a class=menu-item href=https://gyulkkajo.github.io/tags>Tags</a>
+<a class=menu-item href=https://gyulkkajo.github.io/categories>Categories</a>
+<a class=menu-item href=https://gyulkkajo.github.io/about>About</a>
+<a href=javascript:void(0); class=theme-switch><i class="fas fa-adjust fa-rotate-180 fa-fw"></i></a></div></div></nav><nav class=navbar-mobile><div class=navbar-container><div class=navbar-header><div class="navbar-header-title animated bounceIn"><a href=https://gyulkkajo.github.io/>Encode Everything</a></div><div class=menu-toggle id=menu-toggle><span></span><span></span><span></span></div></div><div class=navbar-menu id=mobile-menu><a class=menu-item href=https://gyulkkajo.github.io/posts>Posts</a>
+<a class=menu-item href=https://gyulkkajo.github.io/tags>Tags</a>
+<a class=menu-item href=https://gyulkkajo.github.io/categories>Categories</a>
+<a class=menu-item href=https://gyulkkajo.github.io/about>About</a>
+<a href=javascript:void(0); class=theme-switch><i class="fas fa-adjust fa-rotate-180 fa-fw"></i></a></div></div></nav><main class=main><div class=container><article class=post-warp><h1 class="post-title animated flipInX">Helloworld</h1><div class=post-meta><div class=post-meta-main><a class=author href=https://gyulkkajo.github.io/ rel=author><i class="fas fa-user-circle fa-fw"></i>Changhee Han&nbsp;</a>
+<span class=post-category>included in
+<i class="far fa-folder fa-fw"></i><a href=https://gyulkkajo.github.io/categories/documentation/>Documentation</a></span></div><div class=post-meta-other><i class="far fa-calendar-alt fa-fw"></i><time datetime=2019-12-31>2019-12-31</time>&nbsp;
+<i class="fas fa-pencil-alt fa-fw"></i>about 1113 words&nbsp;
+<i class="far fa-clock fa-fw"></i>3 min&nbsp;</div></div><div class=post-content><a class=post-dummy-target id=memory-reclaim-101></a><h1>Memory Reclaim 101</h1><p>This is a short note explaining memory reclaim flow in linux kernel.</p><a class=post-dummy-target id=reverse-map></a><h2>Reverse map</h2><p>Page doesn't know which processes share itself because it doesn't have shared mapping info.</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-fallback data-lang=fallback>graph LR;
+
+subgraph MM
+task_struct -- mm --&gt; mm_struct
+task_struct --&gt; pgd
+pgd -- ... --&gt; page
+mm_struct --&gt; vm_area_struct
+end
+
+vm_area_struct --&gt; page
+
+page --&gt; anon_vma
+anon_vma .-&gt; vm_area_struct
+
+
+</code></pre></td></tr></table></div></div><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-c data-lang=c><span class=k>static</span> <span class=kt>void</span> <span class=nf>__page_set_anon_rmap</span><span class=p>(</span><span class=k>struct</span> <span class=n>page</span> <span class=o>*</span><span class=n>page</span><span class=p>,</span>
+	<span class=k>struct</span> <span class=n>vm_area_struct</span> <span class=o>*</span><span class=n>vma</span><span class=p>,</span> <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>address</span><span class=p>,</span> <span class=kt>int</span> <span class=n>exclusive</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=k>struct</span> <span class=n>anon_vma</span> <span class=o>*</span><span class=n>anon_vma</span> <span class=o>=</span> <span class=n>vma</span><span class=o>-</span><span class=o>&gt;</span><span class=n>anon_vma</span><span class=p>;</span>
+
+	<span class=n>BUG_ON</span><span class=p>(</span><span class=o>!</span><span class=n>anon_vma</span><span class=p>)</span><span class=p>;</span>
+
+	<span class=k>if</span> <span class=p>(</span><span class=n>PageAnon</span><span class=p>(</span><span class=n>page</span><span class=p>)</span><span class=p>)</span>
+		<span class=k>return</span><span class=p>;</span>
+
+	<span class=cm>/*
+</span><span class=cm>	 * If the page isn&#39;t exclusively mapped into this vma,
+</span><span class=cm>	 * we must use the _oldest_ possible anon_vma for the
+</span><span class=cm>	 * page mapping!
+</span><span class=cm>	 */</span>
+	<span class=k>if</span> <span class=p>(</span><span class=o>!</span><span class=n>exclusive</span><span class=p>)</span>
+		<span class=n>anon_vma</span> <span class=o>=</span> <span class=n>anon_vma</span><span class=o>-</span><span class=o>&gt;</span><span class=n>root</span><span class=p>;</span>
+
+	<span class=n>anon_vma</span> <span class=o>=</span> <span class=p>(</span><span class=kt>void</span> <span class=o>*</span><span class=p>)</span> <span class=n>anon_vma</span> <span class=o>+</span> <span class=n>PAGE_MAPPING_ANON</span><span class=p>;</span>
+	<span class=n>page</span><span class=o>-</span><span class=o>&gt;</span><span class=n>mapping</span> <span class=o>=</span> <span class=p>(</span><span class=k>struct</span> <span class=n>address_space</span> <span class=o>*</span><span class=p>)</span> <span class=n>anon_vma</span><span class=p>;</span>
+	<span class=n>page</span><span class=o>-</span><span class=o>&gt;</span><span class=n>index</span> <span class=o>=</span> <span class=n>linear_page_index</span><span class=p>(</span><span class=n>vma</span><span class=p>,</span> <span class=n>address</span><span class=p>)</span><span class=p>;</span>
+<span class=p>}</span>
+</code></pre></td></tr></table></div></div><a class=post-dummy-target id=reclaiming></a><h1>Reclaiming</h1><ol><li>Low on memory<ol><li>alloc_page_buffers()</li><li>__aloc_pages()</li></ol></li><li>Hibernation<ol><li>pm_suspend_disk()</li></ol></li><li>Periodic<ol><li>kswapd</li><li>cache_reap() at slab.c</li></ol></li></ol><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span><span class=lnt>25
+</span><span class=lnt>26
+</span><span class=lnt>27
+</span><span class=lnt>28
+</span><span class=lnt>29
+</span><span class=lnt>30
+</span><span class=lnt>31
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-fallback data-lang=fallback>graph TB
+
+subgraph Direct
+	__alloc_pages --&gt; get_page_from_freelist
+	get_page_from_freelist --&gt; node_reclaim
+
+	__alloc_pages --&gt; __alloc_pages_slowpath
+
+	__alloc_pages_slowpath --&gt; wake_all_ksawpds
+	__alloc_pages_slowpath -- if can_direct_reclaim --&gt; __alloc_pages_direct_compact
+	__alloc_pages_slowpath --&gt; __alloc_pages_direct_reclaim
+
+	__alloc_pages_direct_reclaim --&gt; __perform_reclaim
+	__perform_reclaim --&gt; try_to_free_pages
+	try_to_free_pages --&gt; shrink_zones
+end
+
+node_reclaim --&gt; shrink_node
+shrink_zones --&gt; shrink_node&gt;shrink_node]
+
+subgraph Kswapd at vmscan.c
+	kswapd --&gt; balance_pgdat
+	balance_pgdat -- Scan high-noraml-dma order --&gt; kswapd_shrink_node
+end
+
+subgraph memcg-force-empty
+	mem_cgroup_force_empty -- retry 5 times --&gt; try_to_free_mem_cgroup_pages
+	try_to_free_mem_cgroup_pages --&gt; do_try_to_free_pages
+end
+
+kswapd_shrink_node --&gt; shrink_node
+</code></pre></td></tr></table></div></div><blockquote><p>kswapd scans the zones in the highmem->normal->dma direction.</p></blockquote><a class=post-dummy-target id=scan-controll-diff></a><h2>Scan controll diff</h2><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt>  1
+</span><span class=lnt>  2
+</span><span class=lnt>  3
+</span><span class=lnt>  4
+</span><span class=lnt>  5
+</span><span class=lnt>  6
+</span><span class=lnt>  7
+</span><span class=lnt>  8
+</span><span class=lnt>  9
+</span><span class=lnt> 10
+</span><span class=lnt> 11
+</span><span class=lnt> 12
+</span><span class=lnt> 13
+</span><span class=lnt> 14
+</span><span class=lnt> 15
+</span><span class=lnt> 16
+</span><span class=lnt> 17
+</span><span class=lnt> 18
+</span><span class=lnt> 19
+</span><span class=lnt> 20
+</span><span class=lnt> 21
+</span><span class=lnt> 22
+</span><span class=lnt> 23
+</span><span class=lnt> 24
+</span><span class=lnt> 25
+</span><span class=lnt> 26
+</span><span class=lnt> 27
+</span><span class=lnt> 28
+</span><span class=lnt> 29
+</span><span class=lnt> 30
+</span><span class=lnt> 31
+</span><span class=lnt> 32
+</span><span class=lnt> 33
+</span><span class=lnt> 34
+</span><span class=lnt> 35
+</span><span class=lnt> 36
+</span><span class=lnt> 37
+</span><span class=lnt> 38
+</span><span class=lnt> 39
+</span><span class=lnt> 40
+</span><span class=lnt> 41
+</span><span class=lnt> 42
+</span><span class=lnt> 43
+</span><span class=lnt> 44
+</span><span class=lnt> 45
+</span><span class=lnt> 46
+</span><span class=lnt> 47
+</span><span class=lnt> 48
+</span><span class=lnt> 49
+</span><span class=lnt> 50
+</span><span class=lnt> 51
+</span><span class=lnt> 52
+</span><span class=lnt> 53
+</span><span class=lnt> 54
+</span><span class=lnt> 55
+</span><span class=lnt> 56
+</span><span class=lnt> 57
+</span><span class=lnt> 58
+</span><span class=lnt> 59
+</span><span class=lnt> 60
+</span><span class=lnt> 61
+</span><span class=lnt> 62
+</span><span class=lnt> 63
+</span><span class=lnt> 64
+</span><span class=lnt> 65
+</span><span class=lnt> 66
+</span><span class=lnt> 67
+</span><span class=lnt> 68
+</span><span class=lnt> 69
+</span><span class=lnt> 70
+</span><span class=lnt> 71
+</span><span class=lnt> 72
+</span><span class=lnt> 73
+</span><span class=lnt> 74
+</span><span class=lnt> 75
+</span><span class=lnt> 76
+</span><span class=lnt> 77
+</span><span class=lnt> 78
+</span><span class=lnt> 79
+</span><span class=lnt> 80
+</span><span class=lnt> 81
+</span><span class=lnt> 82
+</span><span class=lnt> 83
+</span><span class=lnt> 84
+</span><span class=lnt> 85
+</span><span class=lnt> 86
+</span><span class=lnt> 87
+</span><span class=lnt> 88
+</span><span class=lnt> 89
+</span><span class=lnt> 90
+</span><span class=lnt> 91
+</span><span class=lnt> 92
+</span><span class=lnt> 93
+</span><span class=lnt> 94
+</span><span class=lnt> 95
+</span><span class=lnt> 96
+</span><span class=lnt> 97
+</span><span class=lnt> 98
+</span><span class=lnt> 99
+</span><span class=lnt>100
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-c data-lang=c><span class=k>static</span> <span class=kt>int</span> <span class=nf>balance_pgdat</span><span class=p>(</span><span class=n>pg_data_t</span> <span class=o>*</span><span class=n>pgdat</span><span class=p>,</span> <span class=kt>int</span> <span class=n>order</span><span class=p>,</span> <span class=kt>int</span> <span class=n>classzone_idx</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=kt>int</span> <span class=n>i</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_soft_reclaimed</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_soft_scanned</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>pflags</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>zone</span> <span class=o>*</span><span class=n>zone</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>gfp_mask</span> <span class=o>=</span> <span class=n>GFP_KERNEL</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>order</span> <span class=o>=</span> <span class=n>order</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>priority</span> <span class=o>=</span> <span class=n>DEF_PRIORITY</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=o>!</span><span class=n>laptop_mode</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+
+<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>try_to_free_pages</span><span class=p>(</span><span class=k>struct</span> <span class=n>zonelist</span> <span class=o>*</span><span class=n>zonelist</span><span class=p>,</span> <span class=kt>int</span> <span class=n>order</span><span class=p>,</span>
+				<span class=n>gfp_t</span> <span class=n>gfp_mask</span><span class=p>,</span> <span class=n>nodemask_t</span> <span class=o>*</span><span class=n>nodemask</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_reclaimed</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>nr_to_reclaim</span> <span class=o>=</span> <span class=n>SWAP_CLUSTER_MAX</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>gfp_mask</span> <span class=o>=</span> <span class=n>current_gfp_context</span><span class=p>(</span><span class=n>gfp_mask</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>reclaim_idx</span> <span class=o>=</span> <span class=n>gfp_zone</span><span class=p>(</span><span class=n>gfp_mask</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>order</span> <span class=o>=</span> <span class=n>order</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>nodemask</span> <span class=o>=</span> <span class=n>nodemask</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>priority</span> <span class=o>=</span> <span class=n>DEF_PRIORITY</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=o>!</span><span class=n>laptop_mode</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+
+<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>try_to_free_mem_cgroup_pages</span><span class=p>(</span><span class=k>struct</span> <span class=n>mem_cgroup</span> <span class=o>*</span><span class=n>memcg</span><span class=p>,</span>
+					   <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_pages</span><span class=p>,</span>
+					   <span class=n>gfp_t</span> <span class=n>gfp_mask</span><span class=p>,</span>
+					   <span class=kt>bool</span> <span class=n>may_swap</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=k>struct</span> <span class=n>zonelist</span> <span class=o>*</span><span class=n>zonelist</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_reclaimed</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>pflags</span><span class=p>;</span>
+	<span class=kt>int</span> <span class=n>nid</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>int</span> <span class=n>noreclaim_flag</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>nr_to_reclaim</span> <span class=o>=</span> <span class=n>max</span><span class=p>(</span><span class=n>nr_pages</span><span class=p>,</span> <span class=n>SWAP_CLUSTER_MAX</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>gfp_mask</span> <span class=o>=</span> <span class=p>(</span><span class=n>current_gfp_context</span><span class=p>(</span><span class=n>gfp_mask</span><span class=p>)</span> <span class=o>&amp;</span> <span class=n>GFP_RECLAIM_MASK</span><span class=p>)</span> <span class=o>|</span>
+				<span class=p>(</span><span class=n>GFP_HIGHUSER_MOVABLE</span> <span class=o>&amp;</span> <span class=o>~</span><span class=n>GFP_RECLAIM_MASK</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>reclaim_idx</span> <span class=o>=</span> <span class=n>MAX_NR_ZONES</span> <span class=o>-</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>target_mem_cgroup</span> <span class=o>=</span> <span class=n>memcg</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>priority</span> <span class=o>=</span> <span class=n>DEF_PRIORITY</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=o>!</span><span class=n>laptop_mode</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=n>may_swap</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+
+<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>mem_cgroup_shrink_node</span><span class=p>(</span><span class=k>struct</span> <span class=n>mem_cgroup</span> <span class=o>*</span><span class=n>memcg</span><span class=p>,</span>
+						<span class=n>gfp_t</span> <span class=n>gfp_mask</span><span class=p>,</span> <span class=kt>bool</span> <span class=n>noswap</span><span class=p>,</span>
+						<span class=n>pg_data_t</span> <span class=o>*</span><span class=n>pgdat</span><span class=p>,</span>
+						<span class=kt>unsigned</span> <span class=kt>long</span> <span class=o>*</span><span class=n>nr_scanned</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>nr_to_reclaim</span> <span class=o>=</span> <span class=n>SWAP_CLUSTER_MAX</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>target_mem_cgroup</span> <span class=o>=</span> <span class=n>memcg</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=o>!</span><span class=n>laptop_mode</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>reclaim_idx</span> <span class=o>=</span> <span class=n>MAX_NR_ZONES</span> <span class=o>-</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=o>!</span><span class=n>noswap</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+
+<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>shrink_all_memory</span><span class=p>(</span><span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_to_reclaim</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=k>struct</span> <span class=n>reclaim_state</span> <span class=n>reclaim_state</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>nr_to_reclaim</span> <span class=o>=</span> <span class=n>nr_to_reclaim</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>gfp_mask</span> <span class=o>=</span> <span class=n>GFP_HIGHUSER_MOVABLE</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>reclaim_idx</span> <span class=o>=</span> <span class=n>MAX_NR_ZONES</span> <span class=o>-</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>priority</span> <span class=o>=</span> <span class=n>DEF_PRIORITY</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>hibernation_mode</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+
+<span class=k>static</span> <span class=kt>int</span> <span class=n>__node_reclaim</span><span class=p>(</span><span class=k>struct</span> <span class=n>pglist_data</span> <span class=o>*</span><span class=n>pgdat</span><span class=p>,</span> <span class=n>gfp_t</span> <span class=n>gfp_mask</span><span class=p>,</span> <span class=kt>unsigned</span> <span class=kt>int</span> <span class=n>order</span><span class=p>)</span>
+<span class=p>{</span>
+	<span class=cm>/* Minimum pages needed in order to stay on node */</span>
+	<span class=k>const</span> <span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_pages</span> <span class=o>=</span> <span class=mi>1</span> <span class=o>&lt;</span><span class=o>&lt;</span> <span class=n>order</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>task_struct</span> <span class=o>*</span><span class=n>p</span> <span class=o>=</span> <span class=n>current</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>reclaim_state</span> <span class=n>reclaim_state</span><span class=p>;</span>
+	<span class=kt>unsigned</span> <span class=kt>int</span> <span class=n>noreclaim_flag</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>nr_to_reclaim</span> <span class=o>=</span> <span class=n>max</span><span class=p>(</span><span class=n>nr_pages</span><span class=p>,</span> <span class=n>SWAP_CLUSTER_MAX</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>gfp_mask</span> <span class=o>=</span> <span class=n>current_gfp_context</span><span class=p>(</span><span class=n>gfp_mask</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>order</span> <span class=o>=</span> <span class=n>order</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>priority</span> <span class=o>=</span> <span class=n>NODE_RECLAIM_PRIORITY</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=o>!</span><span class=o>!</span><span class=p>(</span><span class=n>node_reclaim_mode</span> <span class=o>&amp;</span> <span class=n>RECLAIM_WRITE</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=o>!</span><span class=o>!</span><span class=p>(</span><span class=n>node_reclaim_mode</span> <span class=o>&amp;</span> <span class=n>RECLAIM_UNMAP</span><span class=p>)</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>reclaim_idx</span> <span class=o>=</span> <span class=n>gfp_zone</span><span class=p>(</span><span class=n>gfp_mask</span><span class=p>)</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+
+</code></pre></td></tr></table></div></div><a class=post-dummy-target id=common-part-of-shrink-flow-shrink-node-detail></a><h2>Common part of shrink flow. shrink_node() detail</h2><ul><li>scan_control.priority: how much of the queues will be scaned in one go. Def 12 == 1/4096th of the queue</li></ul><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-fallback data-lang=fallback>graph TB
+
+shrink_node
+shrink_node --&gt; shrink_node_memcg
+shrink_node --&gt; shrink_slab
+
+subgraph mem_cgroup_iter
+shrink_node_memcg
+shrink_slab
+end
+</code></pre></td></tr></table></div></div><a class=post-dummy-target id=kswapd-scan-controll></a><h2>Kswapd Scan Controll</h2><p>at balance_pgdat()</p><p>Default SC</p><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt>1
+</span><span class=lnt>2
+</span><span class=lnt>3
+</span><span class=lnt>4
+</span><span class=lnt>5
+</span><span class=lnt>6
+</span><span class=lnt>7
+</span><span class=lnt>8
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-c data-lang=c><span class=k>struct</span> <span class=n>scan_control</span> <span class=n>sc</span> <span class=o>=</span> <span class=p>{</span>
+		<span class=p>.</span><span class=n>gfp_mask</span> <span class=o>=</span> <span class=n>GFP_KERNEL</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>order</span> <span class=o>=</span> <span class=n>order</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>priority</span> <span class=o>=</span> <span class=n>DEF_PRIORITY</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_writepage</span> <span class=o>=</span> <span class=o>!</span><span class=n>laptop_mode</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_unmap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+		<span class=p>.</span><span class=n>may_swap</span> <span class=o>=</span> <span class=mi>1</span><span class=p>,</span>
+	<span class=p>}</span><span class=p>;</span>
+</code></pre></td></tr></table></div></div><ul><li>sc.priority를 줄여가며 시도</li><li></li><li>may_writepage = 1 if DEF_PRIORITY - 2 (10) 보다 작다면&mldr;</li></ul><a class=post-dummy-target id=shrink-page-and-unmapping-flow></a><h1>Shrink Page and unmapping flow</h1><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-fallback data-lang=fallback>graph TB
+
+
+shrink_page_list -- if PageAnon &amp;&amp; PageSwapBacked --&gt; add_to_swap
+shrink_page_list -- if page_mapped --&gt; try_to_unmap
+
+try_to_unmap --&gt; rmap_walk
+
+rmap_walk -- annon_vam, anon_vma_chain... call on every vmas.. --&gt; try_to_unmap_one
+
+try_to_unmap_one -- ?? --&gt; arch_unmap_one
+try_to_unmap_one --&gt; MM_ANONPAGE-,MM_SWAPENTS+
+try_to_unmap_one --&gt; swap_entry_to_pte
+try_to_unmap_one --&gt; set_pte_at
+try_to_unmap_one --&gt; page_remove_rmap
+
+shrink_page_list --&gt; free_unref_page_list
+</code></pre></td></tr></table></div></div><a class=post-dummy-target id=zone></a><h1>Zone</h1><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span><span class=lnt>22
+</span><span class=lnt>23
+</span><span class=lnt>24
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-c data-lang=c>
+<span class=c1>// Each node has pglist_data_t
+</span><span class=c1></span><span class=k>struct</span> <span class=n>pglist_data</span> <span class=p>{</span>
+	<span class=k>struct</span> <span class=n>zone</span> <span class=n>node_zones</span><span class=p>[</span><span class=n>MAX_NR_ZONES</span><span class=p>]</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>zonelist</span> <span class=n>node_zonelists</span><span class=p>[</span><span class=n>MAX_ZONELISTS</span><span class=p>]</span><span class=p>;</span>
+	<span class=kt>int</span> <span class=n>nr_zones</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>task_struct</span> <span class=o>*</span><span class=n>kswapd</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>lruvec</span> <span class=n>lruvec</span> <span class=p>{</span>
+		<span class=k>struct</span> <span class=n>list_head</span> <span class=n>lists</span><span class=p>[</span><span class=n>NR_LRU_LISTS</span><span class=p>]</span><span class=p>;</span>	<span class=c1>// LRU LIST
+</span><span class=c1></span>		<span class=p>.</span><span class=p>.</span><span class=p>.</span>
+		<span class=k>struct</span> <span class=n>pglist_data</span> <span class=o>*</span><span class=n>pgdat</span><span class=p>;</span>	<span class=c1>// For MEMCG
+</span><span class=c1></span>	<span class=p>}</span><span class=p>;</span>
+	<span class=n>atomic_long_t</span> <span class=n>vm_stat</span><span class=p>[</span><span class=n>NR_VM_NODE_STAT_ITEMS</span><span class=p>]</span><span class=p>;</span>
+<span class=p>}</span> <span class=n>pg_data_t</span><span class=p>;</span>
+
+<span class=k>struct</span> <span class=n>zone</span> <span class=p>{</span>
+	<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>watermark</span><span class=p>[</span><span class=n>NR_WMARK</span><span class=p>]</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>pglist_data</span> <span class=o>*</span><span class=n>zone_pgdat</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>free_area</span> <span class=n>free_area</span><span class=p>[</span><span class=n>MAX_ORDER</span><span class=p>]</span> <span class=p>{</span>	<span class=c1>// Buddy
+</span><span class=c1></span>		<span class=k>struct</span> <span class=n>list_head</span> <span class=n>free_list</span><span class=p>[</span><span class=n>MIGRATE_TYPES</span><span class=p>]</span><span class=p>;</span>
+		<span class=kt>unsigned</span> <span class=kt>long</span> <span class=n>nr_free</span><span class=p>;</span>
+	<span class=p>}</span>
+	<span class=p>.</span><span class=p>.</span><span class=p>.</span>
+<span class=p>}</span><span class=p>;</span>
+</code></pre></td></tr></table></div></div><ul><li>spanned_pages > present_pages > managed_pages
+** spanned = end_pfn - start_pfn
+** present = spanned - hole
+** managed = present - reserved</li></ul><a class=post-dummy-target id=page></a><h1>Page</h1><div class=highlight><div class=chroma><table class=lntable><tr><td class=lntd><pre class=chroma><code><span class=lnt> 1
+</span><span class=lnt> 2
+</span><span class=lnt> 3
+</span><span class=lnt> 4
+</span><span class=lnt> 5
+</span><span class=lnt> 6
+</span><span class=lnt> 7
+</span><span class=lnt> 8
+</span><span class=lnt> 9
+</span><span class=lnt>10
+</span><span class=lnt>11
+</span><span class=lnt>12
+</span><span class=lnt>13
+</span><span class=lnt>14
+</span><span class=lnt>15
+</span><span class=lnt>16
+</span><span class=lnt>17
+</span><span class=lnt>18
+</span><span class=lnt>19
+</span><span class=lnt>20
+</span><span class=lnt>21
+</span></code></pre></td><td class=lntd><pre class=chroma><code class=language-c data-lang=c>
+<span class=k>struct</span> <span class=n>page</span> <span class=p>{</span>
+	<span class=k>union</span> <span class=p>{</span>
+		<span class=c1>// 1 page cache or anon page
+</span><span class=c1></span>		<span class=k>struct</span> <span class=p>{</span>
+			<span class=k>struct</span> <span class=n>list_head</span> <span class=n>lru</span><span class=p>;</span>
+			<span class=k>struct</span> <span class=n>address_space</span> <span class=o>*</span><span class=n>mapping</span>
+			<span class=n>pgoff_t</span> <span class=n>index</span><span class=p>;</span>
+			<span class=n>unsgined</span> <span class=kt>long</span> <span class=n>private</span><span class=p>;</span> <span class=c1>// For buffer_head, swp_entry, PageBuddy...
+</span><span class=c1></span>		<span class=p>}</span>
+		<span class=c1>// 2 slab, slob
+</span><span class=c1></span>		<span class=c1>// 3 Tail pages of compound page
+</span><span class=c1></span>		<span class=c1>// 4 Second tail page
+</span><span class=c1></span>		<span class=c1>// 5 Page table pages
+</span><span class=c1></span>		<span class=c1>// 6 Zone device pages
+</span><span class=c1></span>	<span class=p>}</span>
+
+	<span class=n>atomit_t</span> <span class=n>_refcount</span><span class=p>;</span>
+	<span class=k>struct</span> <span class=n>mem_cgroup</span> <span class=o>*</span><span class=n>mem_cgroup</span><span class=p>;</span>
+
+<span class=p>}</span>
+</code></pre></td></tr></table></div></div></div><div class=post-footer id=post-footer><div class=post-info><div class=post-info-line><div class=post-info-mod><span>This article is updated with 2019-12-31</span></div><div class=post-info-license></div></div><div class=post-info-line><div class=post-info-md><span><a class=link-to-markdown href=https://gyulkkajo.github.io/2019/12/2019-12-31-helloworld/index.md target=_blank></a></span></div><div class=post-info-share><span><a href="//www.linkedin.com/shareArticle?url=https%3a%2f%2fgyulkkajo.github.io%2f2019%2f12%2f2019-12-31-helloworld%2f&title=Helloworld" target=_blank title="Share on LinkedIn"><i class="fab fa-linkedin fa-fw"></i></a></span></div></div></div><div class=post-info-more><section><span class=tag><a href=https://gyulkkajo.github.io/tags/hugo/><i class="fas fa-tag fa-fw"></i>Hugo</a></span>
+<span class=tag><a href=https://gyulkkajo.github.io/tags/theme/><i class="fas fa-tag fa-fw"></i>Theme</a></span></section><section><span><a href=javascript:window.history.back();>Back</a></span>&nbsp;|&nbsp;<span><a href=https://gyulkkajo.github.io/>Home</a></span></section></div><div class=post-nav></div></div><div class=post-comment></div></article></div></main><footer class=footer><div class=copyright><div class=copyright-line>Powered by <a href=https://gohugo.io/ target=_blank rel="external nofollow noopener noreffer">Hugo</a>&nbsp;|&nbsp;Theme - <a href=https://github.com/dillonzq/LoveIt target=_blank rel="external nofollow noopener noreffer">LoveIt<i class="far fa-heart fa-fw"></i></a></div><div class=copyright-line><i class="far fa-copyright fa-fw"></i><span itemprop=copyrightYear>2017 - 2019</span><span class=author itemprop=copyrightHolder>&nbsp;<a href=https://gyulkkajo.github.io/>Changhee Han</a></span><span class=license>&nbsp;|&nbsp;<a rel="license external nofollow noopener noreffer" href=https://creativecommons.org/licenses/by-nc/4.0/ target=_blank>CC BY-NC 4.0</a></span></div></div></footer><script src=/js/lib/jquery/jquery.slim.min.min.js></script><script src=/js/lib/lazysizes/lazysizes.min.min.js></script><script src=/js/lib/smooth-scroll/smooth-scroll.polyfills.min.min.js></script><script>window.scroll=new SmoothScroll('[data-scroll]',{speed:300,speedAsDuration:true});</script><script src=/js/blog.min.js></script><script type=application/javascript>var doNotTrack=false;if(!doNotTrack){window.ga=window.ga||function(){(ga.q=ga.q||[]).push(arguments)};ga.l=+new Date;ga('create','UA-115098754-1','auto');ga('set','anonymizeIp',true);ga('send','pageview');}</script><script async src=https://www.google-analytics.com/analytics.js></script></div><a href=# class=dynamic-to-top id=dynamic-to-top data-scroll><span>&nbsp;</span></a></body></html>
