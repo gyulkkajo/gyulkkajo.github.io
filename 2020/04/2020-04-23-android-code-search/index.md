@@ -9,4 +9,4 @@
 
 이제 이걸로 분석만 제대로 해내면 되는데... ~~집에 가고 싶다~~
 
-![Android](https://ssl.gstatic.com/devopsconsole/images/oss/icons/android_jetpack_logo.svg =250x)
+![Android](https://ssl.gstatic.com/devopsconsole/images/oss/icons/android_jetpack_logo.svg)
